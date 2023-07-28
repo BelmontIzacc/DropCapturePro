@@ -47,6 +47,32 @@ import numpy as np
 Config.set('graphics', 'width', 1200)
 Config.set('graphics', 'height', 700)
 
+def nothing(x):
+    pass
+
+def get_user_selected_rectangle(frame, height, length):
+    # Creamos una copia del frame original para no alterar la imagen mostrada
+    frame_copy = frame.copy()
+
+    # Ventana para mostrar el frame y permitir al usuario seleccionar un rectángulo
+    cv2.namedWindow('Seleccione un rectangulo', cv2.WINDOW_NORMAL)
+    cv2.resizeWindow('Seleccione un rectangulo', length, height)
+
+    # Definimos los colores (BGR)
+    color_verde = (0, 255, 0)
+
+    # Utilizamos cv2.selectROI para que el usuario seleccione un rectángulo
+    rectangulo = cv2.selectROI('Seleccione un rectangulo', frame_copy, fromCenter=False, showCrosshair=False)
+    cv2.destroyWindow('Seleccione un rectangulo')
+
+    return rectangulo
+
+def escribir_datos_archivo(nombre_archivo, dato1, dato2):
+    # Abre el archivo en modo escritura o escritura y lectura (si no existe, lo crea)
+    with open(nombre_archivo, 'a+') as archivo:
+        # Escribe los datos separados por coma
+        archivo.write(f"{dato1},{dato2}\n")
+
 # Build app and layout
 class CamApp(MDApp):
 
@@ -73,8 +99,18 @@ class CamApp(MDApp):
         self.rotatedCam1 = 0
         self.rotatedCam2 = 0
 
+        self.computer = False
+        self.isComputerSelect = True
+
         self.theme_cls.theme_style = "Dark"
         self.theme_cls.primary_palette = "DeepOrange"
+
+        self.x1 = 0
+        self.x2 = 0
+        self.y1 = 0
+        self.y2 = 0
+
+        self.fileName = ''
 
         # Top - Menu superior
         C_Top = BoxLayout(orientation = 'vertical', size_hint=(1,.12))
@@ -105,10 +141,14 @@ class CamApp(MDApp):
         button2_item1 = Button(text=' Camera 2', size_hint_y=None, height=44)
         button2_item1.bind(on_release=lambda btn: self.set_camera1(1, button2_item1, item1_dropdown))
         button3_item1 = Button(text=' Camera 3', size_hint_y=None, height=44)
-        button3_item1.bind(on_release=lambda btn: self.set_camera1(2, button2_item1, item1_dropdown))
+        button3_item1.bind(on_release=lambda btn: self.set_camera1(2, button3_item1, item1_dropdown))
+        button4_item1 = Button(text=' Analizar', size_hint_y=None, height=44)
+        button4_item1.bind(on_release=lambda btn: self.set_camera1(3, button4_item1, item1_dropdown))
+
         item1_dropdown.add_widget(button1_item1)
         item1_dropdown.add_widget(button2_item1)
         item1_dropdown.add_widget(button3_item1)
+        item1_dropdown.add_widget(button4_item1)
 
         item2 = GridLayout(cols=1, size_hint_y=None, height=40)
         item2_button = Button(text='CAM 2', size_hint_y=None, height=40)
@@ -117,11 +157,12 @@ class CamApp(MDApp):
         item2.add_widget(item2_button)
         item2_dropdown.bind(on_select=lambda instance, x: self.close_dropdown(item2_dropdown))
         button1_item2 = Button(text=' Camera 1', size_hint_y=None, height=44)
-        button1_item2.bind(on_release=lambda btn: self.set_camera2(0, item2_button, item2_dropdown))
+        button1_item2.bind(on_release=lambda btn: self.set_camera2(0, button1_item2, item2_dropdown))
         button2_item2 = Button(text=' Camera 2', size_hint_y=None, height=44)
-        button2_item2.bind(on_release=lambda btn: self.set_camera2(1, item2_button, item2_dropdown))
+        button2_item2.bind(on_release=lambda btn: self.set_camera2(1, button2_item2, item2_dropdown))
         button3_item2 = Button(text=' Camera 3', size_hint_y=None, height=44)
-        button3_item2.bind(on_release=lambda btn: self.set_camera2(2, item2_button, item2_dropdown))
+        button3_item2.bind(on_release=lambda btn: self.set_camera2(2, button3_item2, item2_dropdown))
+        
         item2_dropdown.add_widget(button1_item2)
         item2_dropdown.add_widget(button2_item2)
         item2_dropdown.add_widget(button3_item2)
@@ -163,8 +204,8 @@ class CamApp(MDApp):
         button2.bind(on_release=lambda btn: self.close_dropdown(meta_dropdown))
         
         # Crear elementos del menu para indicar medidas del video
-        button3 = Button(text='Computer Vision', size_hint_y=None, height=44)
-        button3.bind(on_release=lambda btn: self.close_dropdown(meta_dropdown))
+        button3 = Button(text='Computer Vision C1', size_hint_y=None, height=44)
+        button3.bind(on_release=lambda btn: self.changeComputerVision(meta_dropdown))
 
         # Agregar elementos al menú desplegable de MetaDatos
         meta_dropdown.add_widget(button2)
@@ -366,7 +407,7 @@ class CamApp(MDApp):
             second = now.second
 
             nameVideoCam1 = self.toDay+'_'+str(hour)+'.'+str(minute)+'.'+str(second)+'_CAM1.avi'
-
+            self.fileName = nameVideoCam1 + '.txt'
             self.outCam1 = cv2.VideoWriter(nameVideoCam1, cv2.VideoWriter_fourcc('M','J','P','G'), self.fps, (640, 480))
             print("Record video CAM1 On")
             messagebox.showinfo('Iniciando', 'Iniciando grabación de la CAM1')
@@ -429,18 +470,28 @@ class CamApp(MDApp):
         cam_dropdown.select(cam)
         # button.text = f'-> Camera {cam + 1}'
         self.start_captureCAM2()
+        self.computer = False
+        self.isComputerSelect = True
 
     def start_captureCAM1(self):
-        self.capture1 = cv2.VideoCapture(self.cam1)
+        if self.cam1 != 3:
+            self.capture1 = cv2.VideoCapture(self.cam1)
+        else:
+            self.capture1 = cv2.VideoCapture("vid/analizar.mp4")
+
         Clock.schedule_interval(self.updateCAM1, 1.0 / self.fps)
 
     def start_captureCAM2(self):
         self.capture2 = cv2.VideoCapture(self.cam2)
+
         Clock.schedule_interval(self.updateCAM2, 1.0 / self.fps)
 
     def updateCAM1(self, dt):
         ret, frame = self.capture1.read()
+
         if ret: 
+            # (480, 640, 3)
+            height, length, channel =  frame.shape
             
             h = 0
             m = 0
@@ -454,12 +505,12 @@ class CamApp(MDApp):
                 if self.rotatedCam1 == 0:
                     rotate = frameToSave
                 elif self.rotatedCam1 == 1:
-                    frameToSave = cv2.resize(frameToSave, (480, 640))
+                    frameToSave = cv2.resize(frameToSave, (height, length))
                     rotate = cv2.rotate(frameToSave, cv2.ROTATE_90_CLOCKWISE)
                 elif self.rotatedCam1 == 2:
                     rotate = cv2.rotate(frameToSave, cv2.ROTATE_180)
                 elif self.rotatedCam1 == 3:
-                    frameToSave = cv2.resize(frameToSave, (480, 640))
+                    frameToSave = cv2.resize(frameToSave, (height, length))
                     rotate = cv2.rotate(frameToSave, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
                 self.outCam1.write(rotate)
@@ -482,20 +533,21 @@ class CamApp(MDApp):
             if h < 10:
                 h = f'0{h}'
 
-            timeFrame = self.overlay(f'{h}:{m}:{s}')
+            timeFrame = self.overlay(f'{h}:{m}:{s}', height, length, self.cam1)
 
             rotate = frameAux
             if self.rotatedCam1 == 0:
                 rotate = frameAux
             elif self.rotatedCam1 == 1:
-                frameAux = cv2.resize(frameAux, (480, 640))
+                frameAux = cv2.resize(frameAux, (height, length))
                 rotate = cv2.rotate(frameAux, cv2.ROTATE_90_COUNTERCLOCKWISE)
             elif self.rotatedCam1 == 2:
                 rotate = cv2.rotate(frameAux, cv2.ROTATE_180)
             elif self.rotatedCam1 == 3:
-                frameAux = cv2.resize(frameAux, (480, 640))
+                frameAux = cv2.resize(frameAux, (height, length))
                 rotate = cv2.rotate(frameAux, cv2.ROTATE_90_CLOCKWISE)
             
+            miniImage = rotate
             rotate = cv2.addWeighted(rotate, 1,timeFrame,0.6,0)
             buf = rotate.tostring()
             
@@ -507,6 +559,78 @@ class CamApp(MDApp):
         
             # display image from the texture
             self.web_cam1.texture = image_texture
+
+            if self.computer:
+
+                #x1 = int(length / 8 )
+                #x2 = int(x1 * 8)
+                #y1 = int(height / 2)
+                #y2 = int(y1 * 5)
+                
+                if self.isComputerSelect:
+                    frameToSave = cv2.flip(frame, 1)
+                    rectangulo_seleccionado = get_user_selected_rectangle(frameToSave, height, length)
+                    x, y, w, h = rectangulo_seleccionado
+                    print("Coordenadas del rectangulo seleccionado:")
+                    print("X:", x)
+                    print("Y:", y)
+                    print("Ancho:", w)
+                    print("Altura:", h)
+                    # (x,y),(x+w,y+h)
+                    self.x1 = int(x)
+                    self.y1 = int(y)
+                    self.x2 = int(w + x)
+                    self.y2 = int(h + y)
+                    self.isComputerSelect = False
+
+                #roi = miniImage[40:180, x1:x2]
+                #objetivo = miniImage[40:180, x1:x2]
+
+                roi = miniImage[self.y1:self.y2, self.x1:self.x2,]
+                objetivo = miniImage[self.y1:self.y2, self.x1:self.x2]
+
+                image_blur = cv2.GaussianBlur(roi, (51,51), cv2.BORDER_DEFAULT)
+                image_bw = cv2.cvtColor(image_blur, cv2.COLOR_BGR2GRAY)
+                umbral = cv2.getTrackbarPos('Umbral','image')
+                _, thresh = cv2.threshold(image_bw, umbral,255,cv2.THRESH_BINARY_INV)
+
+                # 3,5,7
+                kernel_1 = np.ones((3,3), np.uint8)
+                #thresh = cv2.erode(thresh, kernel_1, iterations = 5)
+                mascara = cv2.dilate(thresh, kernel_1, iterations = 3)
+                # Buscamos los contornos exteriores
+                cnts = cv2.findContours(mascara, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2]
+                # Rellenamos los contornos
+                cv2.drawContours(mascara, cnts, -1, 255, -1)
+                img_masked = cv2.bitwise_and(roi, roi, mask=mascara)
+                cnt =  cnts[0]
+                # compute the bounding rectangle of the contour
+                x,y,w,h = cv2.boundingRect(cnt)
+                # draw contour
+                roi = cv2.drawContours(roi,[cnt],0,(0,255,255),2)
+
+                # draw the bounding rectangle
+                roi = cv2.rectangle(roi,(x,y),(x+w,y+h),(0,255,0),2)
+
+                # Calcular dimension
+                diametro = (x - (x+w))*-1
+                altura = (y - (y+h))*-1
+                
+                if self.scoreCam1 == 1:
+                    escribir_datos_archivo(self.fileName, diametro, altura)
+                #heightx, lengthy, channel =  objetivo.shape
+
+                #dimensions = self.overlay(f'd:{diametro}|h:{altura}', heightx, lengthy, self.cam1)
+                #objetivo = cv2.addWeighted(objetivo, 1 - 0.6, dimensions, 0.6, 0)
+
+                bufRoi = objetivo.tostring()
+
+                image_textureRoi = Texture.create(
+                    size=(roi.shape[1], roi.shape[0]), colorfmt='bgr')
+                image_textureRoi.blit_buffer(bufRoi, colorfmt='bgr', bufferfmt='ubyte')
+
+                self.web_cam2.texture = image_textureRoi
+
         else:
             image = cv2.imread("img/notCamera.png")
             resized_image = cv2.resize(image, (100, 100))
@@ -521,7 +645,9 @@ class CamApp(MDApp):
     def updateCAM2(self, dt):
         ret2, frame2 = self.capture2.read()
         if ret2:
-            
+            # (480, 640, 3)
+            height, length, channel =  frame2.shape
+
             h = 0
             m = 0
             s = 0
@@ -534,12 +660,12 @@ class CamApp(MDApp):
                 if self.rotatedCam2 == 0:
                     rotate = frameToSave
                 elif self.rotatedCam2 == 1:
-                    frameToSave = cv2.resize(frameToSave, (480, 640))
+                    frameToSave = cv2.resize(frameToSave, (height, length))
                     rotate = cv2.rotate(frameToSave, cv2.ROTATE_90_CLOCKWISE)
                 elif self.rotatedCam2 == 2:
                     rotate = cv2.rotate(frameToSave, cv2.ROTATE_180)
                 elif self.rotatedCam2 == 3:
-                    frameToSave = cv2.resize(frameToSave, (480, 640))
+                    frameToSave = cv2.resize(frameToSave, (height, length))
                     rotate = cv2.rotate(frameToSave, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
                 self.outCam2.write(rotate)
@@ -564,18 +690,18 @@ class CamApp(MDApp):
             if h < 10:
                 h = f'0{h}'
 
-            timeFrame = self.overlay(f'{h}:{m}:{s}')
+            timeFrame = self.overlay(f'{h}:{m}:{s}', height, length, self.cam2)
 
             rotate = frameAux
             if self.rotatedCam2 == 0:
                 rotate = frameAux
             elif self.rotatedCam2 == 1:
-                frameAux = cv2.resize(frameAux, (480, 640))
+                frameAux = cv2.resize(frameAux, (height, length))
                 rotate = cv2.rotate(frameAux, cv2.ROTATE_90_COUNTERCLOCKWISE)
             elif self.rotatedCam2 == 2:
                 rotate = cv2.rotate(frameAux, cv2.ROTATE_180)
             elif self.rotatedCam2 == 3:
-                frameAux = cv2.resize(frameAux, (480, 640))
+                frameAux = cv2.resize(frameAux, (height, length))
                 rotate = cv2.rotate(frameAux, cv2.ROTATE_90_CLOCKWISE)
 
             rotate = cv2.addWeighted(rotate, 1,timeFrame,0.6,0)
@@ -623,18 +749,23 @@ class CamApp(MDApp):
 
         self.rotatedCam2 = self.rotatedCam2 + 1
       
-    def overlay (self, text):
+    def overlay (self, text, height, length, camNumber):
         # (480, 640)
         # Agregar lapso del tiempo en la imagen como layer
-        width, height = (640, 480)
+        width, height = (length, height)
         image = np.zeros((height, width, 3), dtype=np.uint8)
         font = cv2.FONT_HERSHEY_SIMPLEX
         font_scale = 1
         font_thickness = 2
-        text_color = (255, 255, 255)
+        text_color = (0,0,0)
         text_size, _ = cv2.getTextSize(text, font, font_scale, font_thickness)
         text_x = int((width - text_size[0] - 10))
         text_y = int((height + text_size[1]) / 10)
+
+        if camNumber == 3:
+            text_x = int((width - 160))
+            text_y = int((height / 5))
+
         cv2.putText(image, 
                     text, 
                     (text_x, text_y), 
@@ -642,22 +773,37 @@ class CamApp(MDApp):
                     text_color, 
                     font_thickness)
         
+        if camNumber != 3:
+            textFps = "FPS: "+str(self.fps)
+            text_size, _ = cv2.getTextSize(textFps, font, font_scale, font_thickness)
+            text_x = int((width - text_size[0] + 10) / 20)
+            text_y = int((height + text_size[1]) / 10)
+            cv2.putText(image, 
+                            textFps, 
+                            (text_x, text_y), 
+                            font, font_scale, 
+                            text_color, 
+                            font_thickness)
 
-        textFps = "FPS: "+str(self.fps)
-        text_size, _ = cv2.getTextSize(textFps, font, font_scale, font_thickness)
-        text_x = int((width - text_size[0] + 10) / 20)
-        text_y = int((height + text_size[1]) / 10)
-        cv2.putText(image, 
-                        textFps, 
-                        (text_x, text_y), 
-                        font, font_scale, 
-                        text_color, 
-                        font_thickness)
         
         image = cv2.flip(image, 0)
         #image = cv2.flip(image, 1)
         return image
     
+    def changeComputerVision(self, dropdown):
+        self.computer = not self.computer
+        print(self.computer)
+        if self.computer:
+            cv2.namedWindow('image')
+            cv2.resizeWindow('image', 500, 50)
+            cv2.createTrackbar('Umbral','image',30,160,nothing)
+            cv2.setTrackbarPos('Umbral','image', 71)
+        else:
+            self.isComputerSelect = True
+            cv2.destroyWindow("image")
+
+        dropdown.dismiss()
+
 if __name__ == '__main__':
     Tk().withdraw()
     CamApp().run()
